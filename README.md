@@ -21,6 +21,8 @@ them, and its versions are unrelated to theirs.
   of a gateway 503 (DFINITY #62, ported).
 - `CreateAsset` of an existing key is a no-op instead of a trap, and
   `get_asset_properties` of a missing asset returns defaults.
+- Install and upgrade accept an empty argument (no bytes at all), as sent by
+  orchestrators such as a Casals baton, and treat it as `null`.
 
 ## Releases
 
