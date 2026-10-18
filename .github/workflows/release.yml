@@ -1,4 +1,4 @@
-name: Build and Release Asset Canister WASM
+name: Release ic-frontend
 
 on:
   push:
@@ -21,14 +21,24 @@ jobs:
         with:
           target: wasm32-unknown-unknown
 
-      - name: Build asset canister WASM
-        run: cargo build --target wasm32-unknown-unknown --release -p canister
+      - name: Install ic-wasm
+        run: cargo install ic-wasm --version 0.9.10 --locked
 
-      - name: Compress WASM
-        run: gzip -c target/wasm32-unknown-unknown/release/canister.wasm > assetstorage.wasm.gz
+      - name: Build ic-frontend WASM
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cargo build --target wasm32-unknown-unknown --release -p canister
+          wasm=target/wasm32-unknown-unknown/release/canister.wasm
+          ic-wasm "$wasm" -o "$wasm" metadata candid:service -f ic-certified-assets/assets.did -v public
+          ic-wasm "$wasm" -o "$wasm" metadata ic-frontend:version -d "$version" -v public
+          gzip -9 -n -c "$wasm" > "ic-frontend@$version.wasm.gz"
+          sha256sum "$wasm" | sed "s|$wasm|ic-frontend@$version.wasm|" > "ic-frontend@$version.wasm.sha256"
+          cat "ic-frontend@$version.wasm.sha256"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2
         with:
-          files: assetstorage.wasm.gz
+          files: |
+            ic-frontend@*.wasm.gz
+            ic-frontend@*.wasm.sha256
           generate_release_notes: true
