@@ -633,6 +633,39 @@ fn serve_fallback_v2() {
 }
 
 #[test]
+fn deleted_asset_serves_fallback_v2() {
+    let mut state = State::default();
+    let system_context = mock_system_context();
+
+    const INDEX_BODY: &[u8] = b"<!DOCTYPE html><html></html>";
+    create_assets(
+        &mut state,
+        &system_context,
+        vec![
+            AssetBuilder::new("/index.html", "text/html")
+                .with_encoding("identity", vec![INDEX_BODY]),
+            AssetBuilder::new("/old.txt", "text/plain").with_encoding("identity", vec![b"old"]),
+            AssetBuilder::new("/deep/old.js", "text/javascript")
+                .with_encoding("identity", vec![b"old"]),
+        ],
+    );
+    for key in ["/old.txt", "/deep/old.js"] {
+        state.delete_asset(DeleteAssetArguments {
+            key: key.to_string(),
+        });
+        let response = certified_http_request(
+            &state,
+            RequestBuilder::get(key)
+                .with_header("Accept-Encoding", "identity")
+                .with_certificate_version(2)
+                .build(),
+        );
+        assert_eq!(response.status_code, 200);
+        assert_eq!(response.body.as_ref(), INDEX_BODY);
+    }
+}
+
+#[test]
 fn serve_fallback_v1() {
     let mut state = State::default();
     let system_context = mock_system_context();
@@ -1870,7 +1903,9 @@ fn create_asset_is_idempotent_if_asset_exists() {
         })
         .unwrap();
 
-    let props = state.get_asset_properties("/contents.html".to_string()).unwrap();
+    let props = state
+        .get_asset_properties("/contents.html".to_string())
+        .unwrap();
     assert_eq!(props.max_age, Some(300));
 }
 
@@ -5325,11 +5360,15 @@ mod pinned_directories {
         });
 
         assert!(
-            state.get_asset_properties("/images/logo.png".to_string()).is_ok(),
+            state
+                .get_asset_properties("/images/logo.png".to_string())
+                .is_ok(),
             "pinned asset should survive delete"
         );
         assert!(
-            state.get_asset_properties("/index.html".to_string()).is_err(),
+            state
+                .get_asset_properties("/index.html".to_string())
+                .is_err(),
             "unpinned asset should be deleted"
         );
     }
@@ -5370,7 +5409,9 @@ mod pinned_directories {
         .unwrap();
 
         assert!(
-            state.get_asset_properties("/images/bg.jpg".to_string()).is_ok(),
+            state
+                .get_asset_properties("/images/bg.jpg".to_string())
+                .is_ok(),
             "pinned asset should survive batch delete"
         );
         assert!(
@@ -5405,7 +5446,10 @@ mod pinned_directories {
                 .with_header("Accept-Encoding", "identity")
                 .build(),
         );
-        assert_eq!(response.status_code, 200, "pinned asset encoding should be preserved");
+        assert_eq!(
+            response.status_code, 200,
+            "pinned asset encoding should be preserved"
+        );
     }
 
     #[test]
@@ -5432,15 +5476,21 @@ mod pinned_directories {
         state.clear();
 
         assert!(
-            state.get_asset_properties("/images/logo.png".to_string()).is_ok(),
+            state
+                .get_asset_properties("/images/logo.png".to_string())
+                .is_ok(),
             "pinned asset /images/logo.png should survive clear"
         );
         assert!(
-            state.get_asset_properties("/images/bg.jpg".to_string()).is_ok(),
+            state
+                .get_asset_properties("/images/bg.jpg".to_string())
+                .is_ok(),
             "pinned asset /images/bg.jpg should survive clear"
         );
         assert!(
-            state.get_asset_properties("/index.html".to_string()).is_err(),
+            state
+                .get_asset_properties("/index.html".to_string())
+                .is_err(),
             "unpinned asset /index.html should be cleared"
         );
         assert!(
@@ -5458,10 +5508,8 @@ mod pinned_directories {
             &mut state,
             &system_context,
             vec![
-                AssetBuilder::new("/a.html", "text/html")
-                    .with_encoding("identity", vec![b"a"]),
-                AssetBuilder::new("/b.html", "text/html")
-                    .with_encoding("identity", vec![b"b"]),
+                AssetBuilder::new("/a.html", "text/html").with_encoding("identity", vec![b"a"]),
+                AssetBuilder::new("/b.html", "text/html").with_encoding("identity", vec![b"b"]),
             ],
         );
 
@@ -5489,7 +5537,9 @@ mod pinned_directories {
             key: "/images/logo.png".to_string(),
         });
         assert!(
-            state.get_asset_properties("/images/logo.png".to_string()).is_ok(),
+            state
+                .get_asset_properties("/images/logo.png".to_string())
+                .is_ok(),
             "pinned asset should not be deleted"
         );
 
@@ -5499,7 +5549,9 @@ mod pinned_directories {
             key: "/images/logo.png".to_string(),
         });
         assert!(
-            state.get_asset_properties("/images/logo.png".to_string()).is_err(),
+            state
+                .get_asset_properties("/images/logo.png".to_string())
+                .is_err(),
             "unpinned asset should now be deletable"
         );
     }
@@ -5531,7 +5583,9 @@ mod pinned_directories {
         assert!(pinned.contains(&"/branding/".to_string()));
 
         assert!(
-            restored_state.get_asset_properties("/images/logo.png".to_string()).is_ok(),
+            restored_state
+                .get_asset_properties("/images/logo.png".to_string())
+                .is_ok(),
             "asset should survive stable roundtrip"
         );
     }
@@ -5555,9 +5609,7 @@ mod pinned_directories {
         // removing the field, and re-serializing
         let mut map: serde_cbor::Value = serde_cbor::from_slice(&bytes).unwrap();
         if let serde_cbor::Value::Map(ref mut m) = map {
-            m.retain(|k, _| {
-                k != &serde_cbor::Value::Text("pinned_prefixes".to_string())
-            });
+            m.retain(|k, _| k != &serde_cbor::Value::Text("pinned_prefixes".to_string()));
         }
         let trimmed_bytes = serde_cbor::to_vec(&map).unwrap();
 
@@ -5568,7 +5620,9 @@ mod pinned_directories {
             "missing pinned_prefixes should default to empty"
         );
         assert!(
-            restored_state.get_asset_properties("/test.html".to_string()).is_ok(),
+            restored_state
+                .get_asset_properties("/test.html".to_string())
+                .is_ok(),
             "asset should survive restore"
         );
     }
@@ -5620,6 +5674,10 @@ mod pinned_directories {
                 .build(),
         );
         assert_eq!(response.status_code, 200);
-        assert_eq!(response.body.as_ref(), b"NEW_PNG", "pinned assets should allow content updates");
+        assert_eq!(
+            response.body.as_ref(),
+            b"NEW_PNG",
+            "pinned assets should allow content updates"
+        );
     }
 }

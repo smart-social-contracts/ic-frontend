@@ -593,14 +593,9 @@ impl State {
             return;
         }
         if self.assets.contains_key(&arg.key) {
-            for dependent in self.dependent_keys(&arg.key) {
-                self.asset_hashes.remove_responses_for_path(&dependent);
-                self.asset_hashes.remove_responses_for_path_v1(&dependent);
-                if dependent == FALLBACK_FILE {
-                    self.asset_hashes.remove_fallback_responses();
-                    self.asset_hashes.remove_fallback_responses_v1();
-                }
-            }
+            let mut affected_keys = self.dependent_keys(&arg.key);
+            affected_keys.push(arg.key.clone());
+            delete_preexisting_asset_hashes(&mut self.asset_hashes, &affected_keys);
             self.assets.remove(&arg.key);
         }
         for key in aliases_of(&arg.key) {

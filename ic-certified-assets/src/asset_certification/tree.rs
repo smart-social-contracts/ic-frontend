@@ -108,6 +108,16 @@ impl<K: NestedTreeKeyRequirements, V: NestedTreeValueRequirements> NestedTree<K,
                 NestedTree::Leaf(_) => {}
                 NestedTree::Nested(tree) => {
                     tree.modify(key.as_ref(), |child| child.delete(&path[1..]));
+                    // An empty `Nested` left behind reads to the HTTP gateway's v2
+                    // verifier as "a more specific exact path may exist", so it
+                    // rejects the fallback's wildcard witness with a 503.
+                    let prune_child = tree.get(key.as_ref()).is_some_and(|c| match c {
+                        NestedTree::Leaf(_) => false,
+                        NestedTree::Nested(rb) => rb.iter().next().is_none(),
+                    });
+                    if prune_child {
+                        tree.delete(key.as_ref());
+                    }
                 }
             }
         } else {
@@ -162,4 +172,28 @@ fn nested_tree_operation() {
     assert_eq!(tree.get(&["one"]), None);
     assert!(!tree.contains_leaf(&["one", "two"]));
     assert!(!tree.contains_leaf(&["one"]));
+}
+
+#[test]
+fn delete_prunes_empty_parent_chain() {
+    let mut tree: NestedTree<&str, Vec<u8>> = NestedTree::default();
+    tree.insert(&["a", "b", "c"], vec![1]);
+    assert!(tree.contains_path(&["a"]));
+
+    tree.delete(&["a", "b", "c"]);
+    assert!(!tree.contains_path(&["a", "b", "c"]));
+    assert!(!tree.contains_path(&["a", "b"]));
+    assert!(!tree.contains_path(&["a"]));
+}
+
+#[test]
+fn delete_preserves_siblings_in_ancestor_chain() {
+    let mut tree: NestedTree<&str, Vec<u8>> = NestedTree::default();
+    tree.insert(&["a", "b", "c"], vec![1]);
+    tree.insert(&["a", "x"], vec![2]);
+
+    tree.delete(&["a", "b", "c"]);
+    assert!(!tree.contains_path(&["a", "b"]));
+    assert!(tree.contains_path(&["a"]));
+    assert_eq!(tree.get(&["a", "x"]), Some(&vec![2]));
 }
